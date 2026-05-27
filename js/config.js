@@ -1,0 +1,94 @@
+// ============================================================
+// Configuration — Snake & Ladder Game
+// ============================================================
+
+// ---- Supabase Credentials ----
+let supabaseUrl = '';
+let supabaseAnonKey = '';
+
+// Dynamically fetch and parse local .env file in the browser for development
+try {
+  const envRes = await fetch('/.env');
+  if (envRes.ok) {
+    const envText = await envRes.text();
+    envText.split('\n').forEach(line => {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#')) {
+        const index = trimmed.indexOf('=');
+        if (index !== -1) {
+          const key = trimmed.substring(0, index).trim();
+          const val = trimmed.substring(index + 1).trim().replace(/^['"]|['"]$/g, '');
+          if (key === 'SUPABASE_URL') supabaseUrl = val;
+          if (key === 'SUPABASE_ANON_KEY') supabaseAnonKey = val;
+        }
+      }
+    });
+  }
+} catch (e) {
+  // Silent catch for production deployments where .env is not served
+}
+
+export const SUPABASE_URL = supabaseUrl;
+export const SUPABASE_ANON_KEY = supabaseAnonKey;
+
+
+// ---- Board Configuration ----
+export const BOARD_SIZE = 10; // 10x10 grid
+export const TOTAL_TILES = 100;
+
+// Classic Snake & Ladder positions: { head: tail } and { bottom: top }
+export const SNAKES = {
+  16: 6,
+  47: 26,
+  49: 11,
+  56: 53,
+  62: 19,
+  64: 60,
+  87: 24,
+  93: 73,
+  95: 75,
+  98: 78
+};
+
+export const LADDERS = {
+  2: 38,
+  4: 14,
+  9: 31,
+  21: 42,
+  28: 84,
+  36: 44,
+  51: 67,
+  71: 91,
+  80: 100
+};
+
+// ---- Player Configuration ----
+export const PLAYER_COLORS = [
+  { name: 'Red', hex: '#E53935', light: '#FFCDD2', emoji: '🔴' },
+  { name: 'Blue', hex: '#1E88E5', light: '#BBDEFB', emoji: '🔵' },
+  { name: 'Green', hex: '#43A047', light: '#C8E6C9', emoji: '🟢' },
+  { name: 'Yellow', hex: '#FDD835', light: '#FFF9C4', emoji: '🟡' }
+];
+
+export const BOT_NAMES = [
+  'RoboSnake', 'LadderBot', 'DiceKing', 'SlitherAI',
+  'ClimbBot', 'LuckyBot', 'TurboRoll', 'SnakeCharmer'
+];
+
+// ---- Animation Timing (ms) ----
+export const ANIM = {
+  DICE_ROLL: 600,
+  PAWN_HOP: 180,
+  SNAKE_SLIDE: 500,
+  LADDER_CLIMB: 450,
+  CONFETTI_DURATION: 5000,
+  TURN_TRANSITION: 300,
+  BOT_THINK_MIN: 1000,
+  BOT_THINK_MAX: 2500
+};
+
+// ---- Tile Colors (for the board) ----
+export const TILE_COLORS = [
+  '#E8EAF6', '#F3E5F5', '#EDE7F6', '#FFF9C4', '#D1C4E9', '#F8BBD0'
+];
+

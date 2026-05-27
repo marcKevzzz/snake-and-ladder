@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Snake & Ladder — A fun online multiplayer board game for up to 4 players. Play with friends or bots with animated dice, snake slides, ladder climbs, and confetti celebrations!">
+  <meta name="keywords" content="snake and ladder, board game, multiplayer, online game">
+  <title>Snake & Ladder | Multiplayer Board Game</title>
+
+  <!-- Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎲</text></svg>">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- CDN Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- ============================== -->
+  <!-- Header / Navigation            -->
+  <!-- ============================== -->
+  <header class="app-header">
+    <div class="header-left">
+      <h1 class="logo" id="btn-nav-home">
+        <span class="logo-icon">🎲</span>
+        <span class="logo-text">Snake & Ladder</span>
+      </h1>
+    </div>
+    <nav class="header-nav">
+      <button class="nav-btn" id="btn-nav-leaderboard" title="Leaderboard">🏆</button>
+      <button class="nav-btn" id="btn-mute" title="Toggle Sound">🔊</button>
+    </nav>
+  </header>
+
+  <!-- ============================== -->
+  <!-- LOBBY SCREEN                   -->
+  <!-- ============================== -->
+  <div id="screen-lobby" class="screen active">
+    <div class="lobby-container">
+      <div class="lobby-hero">
+        <div class="hero-title">🎲 Snake & Ladder</div>
+        <div class="hero-subtitle">Up to 4 players • Bots • Online or Local</div>
+      </div>
+
+      <!-- Mode Tabs -->
+      <div class="mode-tabs">
+        <button class="mode-tab active" id="tab-local">🎮 Local Game</button>
+        <button class="mode-tab" id="tab-online">🌐 Online</button>
+      </div>
+
+      <!-- LOCAL MODE -->
+      <div id="local-mode" class="mode-content">
+        <div class="lobby-card">
+          <div class="input-row">
+            <input type="text" id="player-name-input" class="text-input" placeholder="Enter player name..." maxlength="20" autocomplete="off">
+            <button class="btn btn-primary" id="btn-add-player">+ Add Player</button>
+          </div>
+
+          <div class="player-list" id="player-list">
+            <div class="empty-list">Add players to start! (minimum 2)</div>
+          </div>
+
+          <div class="lobby-actions">
+            <button class="btn btn-accent" id="btn-add-bot">🤖 Add Bot</button>
+            <button class="btn btn-start" id="btn-start-local" disabled>▶ Start Game</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ONLINE MODE -->
+      <div id="online-mode" class="mode-content hidden">
+        <div class="lobby-card">
+          <!-- Setup Phase -->
+          <div id="online-setup">
+            <div class="input-row">
+              <input type="text" id="online-name-input" class="text-input" placeholder="Your name..." maxlength="20" autocomplete="off">
+            </div>
+            <div class="online-actions">
+              <button class="btn btn-primary" id="btn-create-room">🏠 Create Room</button>
+              <div class="divider-text">or join an existing room</div>
+              <div class="input-row">
+                <input type="text" id="join-code-input" class="text-input code-input" placeholder="Room Code" maxlength="4" autocomplete="off" style="text-transform: uppercase;">
+                <button class="btn btn-secondary" id="btn-join-room">Join →</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Room Lobby (shown after creating/joining) -->
+          <div id="room-lobby" class="hidden">
+            <div class="room-header">
+              <span class="room-label">Room Code:</span>
+              <span class="room-code" id="room-code-display"></span>
+              <button class="btn-copy" onclick="navigator.clipboard.writeText(document.getElementById('room-code-display').textContent)" title="Copy code">📋</button>
+            </div>
+
+            <div class="player-list" id="player-list-online">
+              <div class="empty-list">Waiting for players...</div>
+            </div>
+
+            <div class="lobby-actions">
+              <button class="btn btn-secondary" id="btn-leave-lobby-online">← Leave Room</button>
+              <button class="btn btn-accent hidden" id="btn-add-bot-online">🤖 Add Bot</button>
+              <button class="btn btn-start hidden" id="btn-start-online" disabled>▶ Start Game</button>
+            </div>
+          </div>
+        </div>
+
+       
+      </div>
+
+      <!-- Game Rules -->
+      <div class="rules-card">
+        <details>
+          <summary>📖 How to Play</summary>
+          <div class="rules-content">
+            <ul>
+              <li>🎲 Roll the dice to move your pawn forward</li>
+              <li>🪜 Land on a ladder bottom → climb up!</li>
+              <li>🐍 Land on a snake head → slide down!</li>
+              <li>⑥ Roll a 6 → get an extra turn!</li>
+              <li>⚠️ Roll three 6s in a row → back to start!</li>
+              <li>🎯 Land exactly on 100 to win</li>
+              <li>🏆 First to reach 100 wins!</li>
+            </ul>
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== -->
+  <!-- GAME SCREEN                    -->
+  <!-- ============================== -->
+  <div id="screen-game" class="screen hidden">
+    <div class="game-layout">
+      <!-- Player Cards (Left Sidebar) -->
+      <aside class="player-sidebar">
+        <div class="sidebar-title">Players</div>
+        <div id="player-cards"></div>
+
+        <!-- Online Chat Panel -->
+        <div id="online-chat-wrapper" class="chat-wrapper hidden chat-hidden">
+          <div class="chat-header">
+            <span>💬 Live Chat</span>
+            <button id="btn-chat-close" class="btn-chat-close" title="Hide Chat">✕</button>
+          </div>
+          <div class="chat-messages" id="chat-messages"></div>
+          <div class="chat-quick-emojis">
+            <button class="emoji-btn">😀</button>
+            <button class="emoji-btn">😂</button>
+            <button class="emoji-btn">😮</button>
+            <button class="emoji-btn">🎉</button>
+            <button class="emoji-btn">🪜</button>
+            <button class="emoji-btn">🐍</button>
+          </div>
+          <div class="chat-input-row">
+            <input type="text" id="chat-input" class="chat-input" placeholder="Say something..." maxlength="100" autocomplete="off">
+            <button id="btn-send-chat" class="btn-send">➔</button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Game Board (Center) -->
+      <main class="board-area">
+        <div class="board-wrapper">
+          <div id="game-board"></div>
+        </div>
+      </main>
+
+      <!-- Controls Panel (Right Sidebar) -->
+      <aside class="controls-panel">
+        <div class="turn-indicator">
+          <span id="turn-label">Roll the dice!</span>
+        </div>
+
+        <div class="dice-area">
+          <div id="dice-container"></div>
+          <button class="btn btn-roll" id="btn-roll">Roll Dice 🎲</button>
+        </div>
+
+        <div class="game-log-wrapper">
+          <div class="log-title">📜 Game Log</div>
+          <div class="game-log" id="game-log"></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ============================== -->
+  <!-- RESULTS SCREEN                 -->
+  <!-- ============================== -->
+  <div id="screen-results" class="screen hidden">
+    <div class="results-container">
+      <div class="results-title">🏆 Game Over!</div>
+      <div id="results-rankings" class="results-rankings"></div>
+      <div id="match-stats" class="match-stats"></div>
+      <div class="results-actions">
+        <button class="btn btn-primary" id="btn-play-again">🔄 Play Again</button>
+        <button class="btn btn-secondary" id="btn-results-leaderboard">🏆 Leaderboard</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================== -->
+  <!-- LEADERBOARD SCREEN             -->
+  <!-- ============================== -->
+  <div id="screen-leaderboard" class="screen hidden">
+    <div class="leaderboard-container">
+      <div class="leaderboard-title">🏆 Leaderboard</div>
+      <div id="leaderboard-container"></div>
+      <button class="btn btn-secondary" id="btn-back-lobby" style="margin-top: 20px;">← Back to Lobby</button>
+    </div>
+  </div>
+
+  <!-- Floating Chat Toggle for Mobile -->
+  <button id="btn-chat-toggle" class="chat-toggle-btn" style="display: none;" title="Toggle Chat">💬</button>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast"></div>
+
+  <!-- App Script -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

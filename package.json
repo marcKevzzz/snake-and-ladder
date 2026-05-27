@@ -1,0 +1,12 @@
+{
+  "name": "snake-and-ladder",
+  "version": "1.0.0",
+  "description": "🎲 Snake & Ladder — Online Multiplayer Board Game (up to 4 players + bots)",
+  "private": true,
+  "scripts": {
+    "dev": "npx -y serve@latest . -l 3000 --cors",
+    "start": "npx -y serve@latest . -l 3000 --cors"
+  },
+  "keywords": ["snake", "ladder", "board-game", "multiplayer", "supabase"],
+  "license": "MIT"
+}
