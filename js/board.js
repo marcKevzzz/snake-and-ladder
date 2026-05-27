@@ -245,8 +245,14 @@ export class BoardRenderer {
     const eyeDists = isMobile ? [[-2, -2], [2, -2]] : [[-3, -3], [3, -3]];
 
     // Curvy snake body path
-    const midX = (head.x + tail.x) / 2 + (Math.random() - 0.5) * 40;
-    const midY = (head.y + tail.y) / 2;
+    let midX = (head.x + tail.x) / 2 + (Math.random() - 0.5) * 40;
+    let midY = (head.y + tail.y) / 2;
+
+    // Explicit bend to avoid tile 56 for the long snake from 87 to 24
+    if (headTile === 87 && tailTile === 24) {
+      midX = (head.x + tail.x) / 2 - 70; // Pull the curve strongly to the left to bypass 56
+    }
+
     const cp1x = head.x + (midX - head.x) * 0.5 + 30;
     const cp1y = head.y + (midY - head.y) * 0.3;
     const cp2x = midX - 30;

@@ -128,6 +128,7 @@ h3 {
   font-size: 1.4rem;
   color: var(--accent-primary);
   transition: transform var(--transition-bounce);
+  white-space: nowrap; /* Prevent wrapping in mobile view */
 }
 
 .logo:hover {
@@ -779,7 +780,7 @@ h3 {
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  overflow: visible; /* Prevent clipping of pawns at start zone */
 }
 
 .board-wrapper {
@@ -787,6 +788,29 @@ h3 {
   width: 100%;
   max-width: min(80vh, 700px); /* Enhanced board size on desktop viewports */
   aspect-ratio: 1;
+  margin-bottom: 45px; /* Creates spacing below the board for start zone and starting pawns */
+}
+
+/* Beautiful START Zone visual tag */
+.board-start-zone {
+  position: absolute;
+  bottom: -32px;
+  left: 10px;
+  background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.board-start-zone::before {
+  content: "🏁";
+  font-size: 0.8rem;
+  line-height: 1;
 }
 
 .game-board {
@@ -996,7 +1020,7 @@ h3 {
 }
 
 .dice-cube.rolling {
-  animation: diceRandomSpin 1s linear infinite;
+  animation: diceRandomSpin 0.8s linear infinite;
 }
 
 @keyframes diceRandomSpin {
@@ -1082,7 +1106,7 @@ h3 {
 
 .turn-indicator {
   text-align: center;
-  padding: var(--space-md);
+  padding: 8px 12px; /* reduced from space-md to make height a little low */
   background: var(--card-bg);
   border-radius: 14px;
   box-shadow: var(--card-shadow);
@@ -1090,7 +1114,7 @@ h3 {
 
 #turn-label {
   font-family: var(--font-display);
-  font-size: 1.1rem;
+  font-size: 1rem;
   transition: color var(--transition-normal);
 }
 
@@ -1103,7 +1127,7 @@ h3 {
   border-radius: 14px;
   box-shadow: var(--card-shadow);
   overflow: hidden;
-  min-height: 150px;
+  min-height: 220px; /* increased from 150px for larger height */
 }
 
 .log-title {
@@ -1585,16 +1609,20 @@ h3 {
     max-width: min(90vw, 42vh);
     aspect-ratio: 1;
     margin: 0 auto;
+    margin-bottom: 35px; /* Creates spacing below board for start zone and starting pawns on mobile */
   }
 
   .controls-panel {
     display: grid;
     grid-template-columns: 130px 1fr;
     gap: var(--space-sm);
-    max-height: 120px;
-    min-height: 120px;
+    max-height: 170px; /* increased from 120px to hold the taller game log */
+    min-height: 170px; /* increased from 120px to hold the taller game log */
     align-items: stretch;
-    padding: 4px;
+  }
+
+  .turn-indicator {
+    padding: 2px; /* reduced turn indicator height in mobile controls view */
   }
 
   .dice-area {
@@ -1646,8 +1674,8 @@ h3 {
 
   .game-log-wrapper {
     min-height: 0;
-    max-height: 110px;
-    height: 110px;
+    max-height: 160px; /* increased from 110px */
+    height: 160px; /* increased from 110px */
   }
 
   .hero-title {
@@ -1760,6 +1788,17 @@ h3 {
     min-height: auto !important;
     gap: var(--space-md) !important;
     padding: var(--space-sm) !important;
+    padding-top: 0 !important;
+  }
+
+  .turn-indicator {
+    max-width: 350px !important;
+    margin-left: auto !important;
+    padding-inline: var(--space-sm) var(--space-md) !important;
+  }
+
+  #turn-label {
+    font-size: 0.85rem !important;
   }
 
   .dice-area {
@@ -1781,9 +1820,9 @@ h3 {
   .game-log-wrapper {
     display: flex !important;
     flex-direction: column !important;
-    height: 160px !important;
-    max-height: 160px !important;
-    min-height: 160px !important;
+    height: 200px !important;
+    max-height: 200px !important;
+    min-height: 200px !important;
     margin-top: var(--space-sm) !important;
     width: 100% !important;
   }
@@ -2031,5 +2070,49 @@ h3 {
   .chat-toggle-btn {
     left: auto !important;
     right: 20px !important;
+  }
+}
+
+/* Custom responsive overrides for mobile logo scaling, starting pawns spacing, and leaderboard table swiping */
+@media (max-width: 600px) {
+  .leaderboard-container {
+    padding: var(--space-sm);
+  }
+  .leaderboard-title {
+    font-size: 1.6rem;
+    margin-bottom: var(--space-sm);
+  }
+  .lb-tabs {
+    margin-bottom: var(--space-xs);
+    padding: 3px;
+  }
+  .lb-tab {
+    padding: 6px;
+    font-size: 0.8rem;
+  }
+  .lb-content {
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .lb-content::-webkit-scrollbar {
+    display: none;
+  }
+  .lb-table th,
+  .lb-table td {
+    padding: var(--space-xs);
+    font-size: 0.75rem;
+  }
+  .lb-table .rank {
+    font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .logo {
+    font-size: 1.15rem;
+  }
+  .logo-icon {
+    font-size: 1.4rem;
   }
 }
