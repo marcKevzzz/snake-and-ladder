@@ -248,9 +248,11 @@ export class BoardRenderer {
     let midX = (head.x + tail.x) / 2 + (Math.random() - 0.5) * 40;
     let midY = (head.y + tail.y) / 2;
 
-    // Explicit bend to avoid tile 56 for the long snake from 87 to 24
+    // Explicit bend to pass through tile 55 for the long snake from 87 to 24
     if (headTile === 87 && tailTile === 24) {
-      midX = (head.x + tail.x) / 2 - 70; // Pull the curve strongly to the left to bypass 56
+      const pos55 = this.getTilePosition(55);
+      midX = pos55.x;
+      midY = pos55.y;
     }
 
     const cp1x = head.x + (midX - head.x) * 0.5 + 30;

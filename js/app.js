@@ -620,7 +620,7 @@ class App {
         }
       } else {
         this.showScreen('lobby');
-        this.localPlayers = [];
+        this._setMode('local');
         this._renderPlayerList();
       }
     });
@@ -663,6 +663,7 @@ class App {
       this.mp.broadcastDiceRoll({
         diceValue,
         result,
+        doubleSix: this.game.consecutiveSixes === 2,
         gs: this.game.getMinimalState()
       });
     }
@@ -676,6 +677,16 @@ class App {
       text: `🎲 ${currentPlayer.name} rolled a ${diceValue}`,
       type: 'roll'
     });
+
+    // Handle double 6 confetti trigger
+    if (this.game.consecutiveSixes === 2) {
+      this._updateGameLog({
+        text: `🔥 Double 6! ${currentPlayer.name} is on fire!`,
+        type: 'bonus'
+      });
+      this.sounds.playExtraTurn();
+      this.anims.celebrateDoubleSix();
+    }
 
     if (result) {
       // Animate pawn movement
@@ -727,6 +738,25 @@ class App {
           text: `⚠️ ${currentPlayer.name} rolled three 6s in a row! Back to start!`,
           type: 'warning'
         });
+
+        // Visual penalty slide back and shake/flash animation
+        const pawn = this.board.getPawnElement(result.playerId);
+        if (pawn) {
+          pawn.classList.add('penalty-reset');
+          this.sounds.playSnakeHiss(); // Play bad luck slide sound
+          
+          const idx = parseInt(pawn.dataset.playerIndex) || 0;
+          const boardHeight = this.board.boardRect?.height || 500;
+          const startX = 30 + idx * 24;
+          const startY = boardHeight + 20;
+          
+          // Slide the pawn back to the start zone beautifully
+          await this.anims._animateMoveTo(pawn, startX, startY, 1000, 'cubic-bezier(0.25, 0.8, 0.25, 1)');
+          
+          // Let it shake and flash at start zone for 1.2s so player knows exactly where they are
+          await this.anims._wait(1200);
+          pawn.classList.remove('penalty-reset');
+        }
       }
 
       // Extra turn notification
@@ -795,6 +825,15 @@ class App {
       type: 'roll'
     });
 
+    // Handle remote double 6 confetti trigger
+    if (data.doubleSix) {
+      this._updateGameLog({
+        text: `🔥 Double 6! ${roller.name} is on fire!`,
+        type: 'bonus'
+      });
+      this.anims.celebrateDoubleSix();
+    }
+
     // Apply state while dice is animating
     if (gameState) {
       this.game.loadState(gameState);
@@ -842,6 +881,25 @@ class App {
         text: `⚠️ ${roller.name} rolled three 6s in a row! Back to start!`,
         type: 'warning'
       });
+
+      // Visual penalty slide back and shake/flash animation
+      const pawn = this.board.getPawnElement(result.playerId);
+      if (pawn) {
+        pawn.classList.add('penalty-reset');
+        this.sounds.playSnakeHiss(); // Play bad luck slide sound
+        
+        const idx = parseInt(pawn.dataset.playerIndex) || 0;
+        const boardHeight = this.board.boardRect?.height || 500;
+        const startX = 30 + idx * 24;
+        const startY = boardHeight + 20;
+        
+        // Slide the pawn back to the start zone beautifully
+        await this.anims._animateMoveTo(pawn, startX, startY, 1000, 'cubic-bezier(0.25, 0.8, 0.25, 1)');
+        
+        // Let it shake and flash at start zone for 1.2s so player knows exactly where they are
+        await this.anims._wait(1200);
+        pawn.classList.remove('penalty-reset');
+      }
     }
 
     if (result.extraTurn && !result.win) {

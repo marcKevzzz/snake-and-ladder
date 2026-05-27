@@ -118,6 +118,18 @@ export class AnimationController {
   }
 
   /**
+   * Mini confetti burst for rolling two 6s in a row.
+   */
+  celebrateDoubleSix() {
+    if (typeof confetti !== 'function') return;
+    confetti({
+      particleCount: 50,
+      spread: 60,
+      origin: { y: 0.65, x: 0.5 }
+    });
+  }
+
+  /**
    * Pulse a player card to indicate active turn.
    */
   pulsePlayerCard(cardEl) {
