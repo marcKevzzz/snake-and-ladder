@@ -4,10 +4,19 @@
   "description": "🎲 Snake & Ladder — Online Multiplayer Board Game (up to 4 players + bots)",
   "private": true,
   "scripts": {
-    "dev": "npx -y serve@latest . -l 3000 --cors",
+    "dev": "serve . -l 3000 --cors",
     "build": "node scripts/build-env.js",
-    "start": "npx -y serve@latest . -l 3000 --cors"
+    "start": "serve . -l 3000 --cors"
   },
-  "keywords": ["snake", "ladder", "board-game", "multiplayer", "supabase"],
-  "license": "MIT"
+  "keywords": [
+    "snake",
+    "ladder",
+    "board-game",
+    "multiplayer",
+    "supabase"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "serve": "^14.2.6"
+  }
 }

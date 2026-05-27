@@ -11,18 +11,21 @@ export class BotController {
 
   /**
    * Execute a bot's turn with a random delay to feel natural.
-   * @param {Function} rollCallback - The function to call when bot "clicks" roll
    * @param {Object} player - The bot player object
+   * @param {Function} rollCallback - The function to call when bot "clicks" roll
+   * @param {boolean} isOnline - Whether the game is in online mode
    * @returns {Promise}
    */
-  async takeTurn(player, rollCallback) {
+  async takeTurn(player, rollCallback, isOnline = false) {
     if (!player || !player.isBot) return;
     if (this.activeBots.has(player.id)) return; // Prevent double-triggering
 
     this.activeBots.add(player.id);
 
-    // Random "thinking" delay
-    const thinkTime = ANIM.BOT_THINK_MIN + Math.random() * (ANIM.BOT_THINK_MAX - ANIM.BOT_THINK_MIN);
+    // Random "thinking" delay — much faster in online mode to keep game snappy
+    const minTime = isOnline ? 300 : ANIM.BOT_THINK_MIN;
+    const maxTime = isOnline ? 800 : ANIM.BOT_THINK_MAX;
+    const thinkTime = minTime + Math.random() * (maxTime - minTime);
     await this._wait(thinkTime);
 
     this.activeBots.delete(player.id);

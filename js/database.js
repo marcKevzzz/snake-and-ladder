@@ -166,7 +166,8 @@ export class Database {
           await this.supabase.from('match_players').insert(playerRecords);
         }
 
-        // Save game logs
+        // Save game logs (Skipped to keep the database completely clean and save bandwidth at the user's request)
+        /*
         if (match && matchData.eventLog) {
           const logRecords = matchData.eventLog.map(e => ({
             match_id: match.id,
@@ -180,6 +181,7 @@ export class Database {
             await this.supabase.from('game_logs').insert(logRecords.slice(i, i + 100));
           }
         }
+        */
 
         return match;
       } catch (e) {

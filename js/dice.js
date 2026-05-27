@@ -85,14 +85,16 @@ export class DiceRenderer {
       const finalX = spinsX + rot.x;
       const finalY = spinsY + rot.y;
 
-      // Apply the roll after a brief delay
+      const spinDuration = 800; // Let it spin/tumble for 800ms
+
+      // Apply the landing roll after the rolling spin duration
       setTimeout(() => {
         this.cube.classList.remove('rolling');
         this.cube.style.transition = `transform ${ANIM.DICE_ROLL}ms cubic-bezier(0.25, 0.8, 0.25, 1)`;
         this.cube.style.transform = `rotateX(${finalX}deg) rotateY(${finalY}deg)`;
-      }, 50);
-
-      // Resolve after animation
+      }, spinDuration);
+ 
+      // Resolve after entire roll animation finishes
       setTimeout(() => {
         this.cube.dataset.face = value;
         this.isRolling = false;
@@ -101,7 +103,7 @@ export class DiceRenderer {
           this.cube.style.transition = 'none';
         }, 50);
         resolve();
-      }, ANIM.DICE_ROLL + 80);
+      }, spinDuration + ANIM.DICE_ROLL + 80);
     });
   }
 

@@ -49,6 +49,15 @@ class App {
     this._bindNavEvents();
     this._bindChatEvents();
 
+    // Restore saved online player name
+    const savedName = localStorage.getItem('snl_online_player_name');
+    if (savedName) {
+      const onlineInput = document.getElementById('online-name-input');
+      if (onlineInput) onlineInput.value = savedName;
+      const localInput = document.getElementById('player-name-input');
+      if (localInput) localInput.value = savedName;
+    }
+
     // Handle window resize
     window.addEventListener('resize', () => {
       if (this.board) {
@@ -150,6 +159,20 @@ class App {
         const createBtn = document.getElementById('btn-create-room');
         if (createBtn && !createBtn.disabled) createBtn.click();
       }
+    });
+
+    // Live name inputs synchronization (between local and online tabs)
+    document.getElementById('player-name-input')?.addEventListener('input', (e) => {
+      const val = e.target.value;
+      const onlineInput = document.getElementById('online-name-input');
+      if (onlineInput) onlineInput.value = val;
+      localStorage.setItem('snl_online_player_name', val);
+    });
+    document.getElementById('online-name-input')?.addEventListener('input', (e) => {
+      const val = e.target.value;
+      const localInput = document.getElementById('player-name-input');
+      if (localInput) localInput.value = val;
+      localStorage.setItem('snl_online_player_name', val);
     });
   }
 
@@ -264,6 +287,7 @@ class App {
     this.myPlayerName = name;
     this.isHost = true;
     this.localPlayers = [{ name, isBot: false }];
+    localStorage.setItem('snl_online_player_name', name);
 
     try {
       this.roomCode = await this.mp.createRoom(name);
@@ -293,12 +317,29 @@ class App {
     this.myPlayerName = name;
     this.isHost = false;
     this.roomCode = code;
+    localStorage.setItem('snl_online_player_name', name);
 
     try {
       await this.mp.joinRoom(code, name);
-      this._showRoomLobby();
-      this.saveActiveSession();
-      this._showToast(`Joined room ${code}!`);
+      this._showToast("Connecting to room...");
+
+      // Wait a short delay to check if host actually exists in this room
+      setTimeout(() => {
+        const presenceList = this.mp.getPresenceList();
+        const host = presenceList.find(p => p.is_host);
+
+        if (!host) {
+          this._showToast("Room not found or host not present!");
+          this.mp.leaveRoom().catch(console.error);
+          this.roomCode = null;
+          return;
+        }
+
+        this._showRoomLobby();
+        this.saveActiveSession();
+        this._showToast(`Joined room ${code}!`);
+      }, 1200);
+
     } catch (e) {
       this._showToast('Failed to join room');
       console.error(e);
@@ -358,6 +399,18 @@ class App {
       } else if (!this.isHost && data.type === 'lobby_update') {
         this.localPlayers = data.players;
         this._renderPlayerList();
+      } else if (!this.isHost && data.type === 'back_to_lobby') {
+        this.showScreen('lobby');
+        this._setMode('online');
+        this._showRoomLobby();
+        this.localPlayers = data.players || [];
+        this._renderPlayerList();
+
+        // Clear logs and chat UI for clean slate
+        const log = document.getElementById('game-log');
+        if (log) log.innerHTML = '';
+        const chat = document.getElementById('chat-messages');
+        if (chat) chat.innerHTML = '';
       } else if (data.type === 'player_left') {
         this._showToast(`🚫 ${data.name} has left the match.`);
         this._updateGameLog({
@@ -467,6 +520,14 @@ class App {
         this._updatePlayerCards();
         this._updateTurnUI();
         this._updateGameLog({ text: '🎲 Game started! Roll the dice!', type: 'system' });
+
+        // Trigger bot turn if first player is a bot
+        const firstPlayer = this.game.getCurrentPlayer();
+        if (firstPlayer && firstPlayer.isBot) {
+          if (!this.isOnlineMode || this.isHost) {
+            this.bot.takeTurn(firstPlayer, () => this._onRollDice(), this.isOnlineMode);
+          }
+        }
       });
     });
   }
@@ -489,6 +550,14 @@ class App {
         this.board.updatePawnPositions(this.game.players);
         this._updatePlayerCards();
         this._updateTurnUI();
+
+        // Trigger bot turn if first player is a bot
+        const firstPlayer = this.game.getCurrentPlayer();
+        if (firstPlayer && firstPlayer.isBot) {
+          if (!this.isOnlineMode || this.isHost) {
+            this.bot.takeTurn(firstPlayer, () => this._onRollDice(), this.isOnlineMode);
+          }
+        }
       });
     });
   }
@@ -500,11 +569,60 @@ class App {
   _bindGameEvents() {
     document.getElementById('btn-roll')?.addEventListener('click', () => this._onRollDice());
 
+    // Keyboard shortcut for desktop: Space bar to roll dice
+    window.addEventListener('keydown', (e) => {
+      if (e.key === ' ' || e.code === 'Space') {
+        const rollBtn = document.getElementById('btn-roll');
+        const activeEl = document.activeElement;
+        const isInputActive = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+
+        // Only trigger roll if button is visible, enabled, and player is not typing in a text field
+        if (rollBtn && !rollBtn.disabled && !isInputActive) {
+          e.preventDefault(); // Prevent page scrolling down
+          rollBtn.click();
+        }
+      }
+    });
+
     // Results screen buttons
     document.getElementById('btn-play-again')?.addEventListener('click', () => {
-      this.showScreen('lobby');
-      this.localPlayers = [];
-      this._renderPlayerList();
+      // Clear local logs and chat UI for clean slate
+      const log = document.getElementById('game-log');
+      if (log) log.innerHTML = '';
+      const chat = document.getElementById('chat-messages');
+      if (chat) chat.innerHTML = '';
+      
+      if (this.roomCode) {
+        localStorage.removeItem(`snl_chat_${this.roomCode}`);
+        localStorage.removeItem(`snl_log_${this.roomCode}`);
+      }
+      localStorage.removeItem('snl_log_local');
+
+      if (this.isOnlineMode && this.mp) {
+        this.showScreen('lobby');
+        this._setMode('online');
+        this._showRoomLobby();
+
+        // Restore human players from active Presence
+        const presencePlayers = this.mp.getPresenceList();
+        this.localPlayers = presencePlayers.map(p => ({
+          name: p.name,
+          isBot: false
+        }));
+        this._renderPlayerList();
+
+        // Broadcast to all other players to go back to the lobby
+        if (this.isHost) {
+          this.mp.broadcastGameState({
+            type: 'back_to_lobby',
+            players: this.localPlayers
+          });
+        }
+      } else {
+        this.showScreen('lobby');
+        this.localPlayers = [];
+        this._renderPlayerList();
+      }
     });
     document.getElementById('btn-results-leaderboard')?.addEventListener('click', () => {
       this.showScreen('leaderboard');
@@ -537,12 +655,21 @@ class App {
     // Roll dice
     const diceValue = this.game.rollDice();
 
+    // Execute move
+    const result = this.game.executeMove(diceValue);
+
+    // Broadcast state in online mode (use minimal payload for speed) immediately to eliminate opponent lag
+    if (this.isOnlineMode && this.mp) {
+      this.mp.broadcastDiceRoll({
+        diceValue,
+        result,
+        gs: this.game.getMinimalState()
+      });
+    }
+
     // Animate dice
     this.sounds.playDiceRoll();
     await this.dice.roll(diceValue);
-
-    // Execute move
-    const result = this.game.executeMove(diceValue);
 
     // Log the roll
     this._updateGameLog({
@@ -625,15 +752,6 @@ class App {
       this.board.updatePawnPositions(this.game.players);
     }
 
-    // Broadcast state in online mode (use minimal payload for speed)
-    if (this.isOnlineMode && this.mp) {
-      this.mp.broadcastDiceRoll({
-        diceValue,
-        result,
-        gs: this.game.getMinimalState()
-      });
-    }
-
     // Update UI
     this._updatePlayerCards();
     this.saveActiveSession();
@@ -652,7 +770,7 @@ class App {
     const nextPlayer = this.game.getCurrentPlayer();
     if (nextPlayer && nextPlayer.isBot) {
       if (!this.isOnlineMode || this.isHost) {
-        this.bot.takeTurn(nextPlayer, () => this._onRollDice());
+        this.bot.takeTurn(nextPlayer, () => this._onRollDice(), this.isOnlineMode);
       }
     }
   }
@@ -750,6 +868,14 @@ class App {
       await this._handleGameOver();
     } else {
       this._updateTurnUI();
+
+      // Trigger bot turn if next player is a bot (only host executes bot moves in online mode)
+      const nextPlayer = this.game.getCurrentPlayer();
+      if (nextPlayer && nextPlayer.isBot) {
+        if (!this.isOnlineMode || this.isHost) {
+          this.bot.takeTurn(nextPlayer, () => this._onRollDice(), this.isOnlineMode);
+        }
+      }
     }
   }
 
@@ -1145,13 +1271,26 @@ class App {
       this.board = null;
       this.dice = null;
       this.anims = null;
-      this.roomCode = null;
-      this.localPlayers = [];
-      this.isOnlineMode = false;
       
-      // Force reload to get a fully clean slate back to lobby
-      location.reload();
-      return false; // prevent further navigation as reload handles it
+      if (this.isOnlineMode) {
+        this.roomCode = null;
+        this.localPlayers = [];
+        
+        // Reset room-lobby and online-setup visibility
+        document.getElementById('room-lobby')?.classList.add('hidden');
+        document.getElementById('online-setup')?.classList.remove('hidden');
+        this.showScreen('lobby');
+        this._setMode('online');
+        return false;
+      } else {
+        this.roomCode = null;
+        this.localPlayers = [];
+        this.isOnlineMode = false;
+        
+        // Force reload to get a fully clean slate back to lobby for local games
+        location.reload();
+        return false; // prevent further navigation as reload handles it
+      }
     }
     return true;
   }

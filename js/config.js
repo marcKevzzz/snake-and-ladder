@@ -88,7 +88,7 @@ export const BOT_NAMES = [
 
 // ---- Animation Timing (ms) ----
 export const ANIM = {
-  DICE_ROLL: 600,
+  DICE_ROLL: 1200,
   PAWN_HOP: 180,
   SNAKE_SLIDE: 500,
   LADDER_CLIMB: 450,
