@@ -52,3 +52,6 @@ Thumbs.db
 # Supabase local development
 supabase/.temp/
 .supabase/
+
+# Auto-generated env config (built by scripts/build-env.js)
+js/env.js

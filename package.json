@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "npx -y serve@latest . -l 3000 --cors",
+    "build": "node scripts/build-env.js",
     "start": "npx -y serve@latest . -l 3000 --cors"
   },
   "keywords": ["snake", "ladder", "board-game", "multiplayer", "supabase"],
