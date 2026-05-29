@@ -884,6 +884,7 @@ class App {
 
         // Snake animation
         if (result.snake) {
+          this._triggerFloatingFeedback('snake', currentPlayer.color.hex, currentPlayer.name);
           this._updateGameLog({
             text: `🐍 ${currentPlayer.name} got bitten! Slides from ${result.snake.from} to ${result.snake.to}`,
             type: 'snake'
@@ -898,6 +899,7 @@ class App {
 
         // Ladder animation
         if (result.ladder) {
+          this._triggerFloatingFeedback('ladder', currentPlayer.color.hex, currentPlayer.name);
           this._updateGameLog({
             text: `🪜 ${currentPlayer.name} climbs a ladder! ${result.ladder.from} → ${result.ladder.to}`,
             type: 'ladder'
@@ -919,6 +921,7 @@ class App {
       }
 
       if (result.penalty) {
+        this._triggerFloatingFeedback('penalty', currentPlayer.color.hex, currentPlayer.name);
         this._updateGameLog({
           text: `⚠️ ${currentPlayer.name} rolled three 6s in a row! Back to start!`,
           type: 'warning'
@@ -946,6 +949,7 @@ class App {
 
       // Extra turn notification
       if (result.extraTurn && !result.win) {
+        this._triggerFloatingFeedback('extra', currentPlayer.color.hex, currentPlayer.name);
         this._updateGameLog({
           text: `🎉 ${currentPlayer.name} rolled a 6 — extra turn!`,
           type: 'bonus'
@@ -1036,6 +1040,7 @@ class App {
         });
 
         if (result.snake) {
+          this._triggerFloatingFeedback('snake', roller.color.hex, roller.name);
           this._updateGameLog({
             text: `🐍 ${roller.name} got bitten! Slides from ${result.snake.from} to ${result.snake.to}`,
             type: 'snake'
@@ -1044,6 +1049,7 @@ class App {
           await this.anims.slideSnake(pawn, result.snake.from, result.snake.to);
         }
         if (result.ladder) {
+          this._triggerFloatingFeedback('ladder', roller.color.hex, roller.name);
           this._updateGameLog({
             text: `🪜 ${roller.name} climbs a ladder! ${result.ladder.from} → ${result.ladder.to}`,
             type: 'ladder'
@@ -1062,6 +1068,7 @@ class App {
     }
 
     if (result.penalty) {
+      this._triggerFloatingFeedback('penalty', roller.color.hex, roller.name);
       this._updateGameLog({
         text: `⚠️ ${roller.name} rolled three 6s in a row! Back to start!`,
         type: 'warning'
@@ -1088,6 +1095,7 @@ class App {
     }
 
     if (result.extraTurn && !result.win) {
+      this._triggerFloatingFeedback('extra', roller.color.hex, roller.name);
       this._updateGameLog({
         text: `🎉 ${roller.name} rolled a 6 — extra turn!`,
         type: 'bonus'
@@ -1293,6 +1301,55 @@ class App {
       rollBtn.disabled = isBotTurn || !isMyTurn || this.isProcessingTurn;
       rollBtn.textContent = isBotTurn ? '🤖 Bot thinking...' : 'Roll Dice 🎲';
     }
+  }
+
+  _triggerFloatingFeedback(type, playerHex, playerName) {
+    const ladders = ["SPLENDID! 🪜", "AWESOME! 🪜", "WOOHOO! 🪜", "SOARING! 🪜", "CLIMBING! 🪜", "UP WE GO! 🪜", "LUCKY LEAP! 🪜"];
+    const snakes = ["OH NO! 🐍", "OUCH! 🐍", "SLITHERED! 🐍", "WHOOPS! 🐍", "WATCH OUT! 🐍", "DOWNWARD! 🐍", "SNAKE BITE! 🐍"];
+    const extraTurns = ["LUCKY 6! 🎲", "EXTRA TURN! 🎉", "ON FIRE! 🔥", "BOOM! ⚡", "ROLL AGAIN! 🎲"];
+    const penalties = ["UNLUCKY! ⚠️", "TRIPLE SIX! 💀", "BACK TO START! 😭", "OH MY! 💀"];
+
+    let phrases = [];
+    if (type === 'ladder') phrases = ladders;
+    else if (type === 'snake') phrases = snakes;
+    else if (type === 'extra') phrases = extraTurns;
+    else if (type === 'penalty') phrases = penalties;
+    else return;
+
+    const text = phrases[Math.floor(Math.random() * phrases.length)];
+    this._showFloatingFeedback(text, type, playerHex);
+  }
+
+  _showFloatingFeedback(text, type, playerHex = '#3F51B5') {
+    const banner = document.createElement('div');
+    banner.className = `floating-feedback ${type}`;
+    
+    // Choose beautiful gradient base styling
+    let backgroundStyle = `linear-gradient(135deg, ${playerHex} 0%, #1A237E 100%)`;
+    if (type === 'snake') {
+      backgroundStyle = `linear-gradient(135deg, ${playerHex} 0%, #FF7043 100%)`;
+    } else if (type === 'extra') {
+      backgroundStyle = `linear-gradient(135deg, ${playerHex} 0%, #00B894 100%)`;
+    } else if (type === 'penalty') {
+      backgroundStyle = `linear-gradient(135deg, #FF7043 0%, #1A237E 100%)`;
+    }
+
+    banner.style.background = backgroundStyle;
+    banner.style.border = `4px solid white`;
+    banner.innerHTML = `<span class="feedback-text" style="color: white; text-shadow: 0 4px 8px rgba(0,0,0,0.45);">${text}</span>`;
+    
+    document.body.appendChild(banner);
+    
+    // Play transition swoosh sound
+    this.sounds.playExtraTurn();
+
+    // Swoosh out after 1.2s
+    setTimeout(() => {
+      banner.classList.add('swoosh-out');
+      setTimeout(() => {
+        banner.remove();
+      }, 350);
+    }, 1200);
   }
 
   _updateGameLog(entry, isHistory = false) {
