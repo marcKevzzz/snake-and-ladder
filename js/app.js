@@ -28,6 +28,8 @@ class App {
     this.currentScreen = 'lobby';
     this.isProcessingTurn = false;
     this.localPlayers = []; // For lobby player list
+    this.localPlayersCache = []; // Backing cache for local matchmaking
+    this.onlinePlayersCache = []; // Backing cache for online matchmaking
     this.roomCode = null;
     this.isHost = true;
     this.isOnlineMode = false;
@@ -192,7 +194,22 @@ class App {
   }
 
   _setMode(mode) {
+    // Save current active player list to the previous mode's cache
+    if (this.isOnlineMode) {
+      this.onlinePlayersCache = [...this.localPlayers];
+    } else {
+      this.localPlayersCache = [...this.localPlayers];
+    }
+
     this.isOnlineMode = mode === 'online';
+
+    // Restore player list from the new mode's cache
+    if (this.isOnlineMode) {
+      this.localPlayers = [...this.onlinePlayersCache];
+    } else {
+      this.localPlayers = [...this.localPlayersCache];
+    }
+
     document.getElementById('tab-local')?.classList.toggle('active', mode === 'local');
     document.getElementById('tab-online')?.classList.toggle('active', mode === 'online');
     document.getElementById('local-mode')?.classList.toggle('hidden', mode !== 'local');
@@ -270,7 +287,19 @@ class App {
       list.innerHTML = this.localPlayers.map((p, i) => {
         const color = PLAYER_COLORS[i] || { hex: '#999999' };
         const displayName = p.isBot ? `🤖 Bot ${i + 1}` : p.name;
-        const showRemove = !this.isOnlineMode || this.isHost;
+        
+        // Host can kick other players and bots, but not themselves. Local mode allows all removals.
+        let showRemove = false;
+        if (!this.isOnlineMode) {
+          showRemove = true;
+        } else if (this.isHost) {
+          if (p.isBot) {
+            showRemove = true;
+          } else if (p.name !== this.myPlayerName) {
+            showRemove = true;
+          }
+        }
+
         const removeButton = showRemove
           ? `<button class="btn-remove" onclick="window.__app._removePlayer(${i})" title="Remove">✕</button>`
           : '';
@@ -524,15 +553,93 @@ class App {
     this.mp.onPresenceSync = (state) => {
       // Update player list from presence while preserving any active bots
       const players = Object.values(state).flat();
+      
+      // Filter out duplicate player names to prevent double-rendering during reconnects or presence latency
+      const uniquePlayers = [];
+      const seenNames = new Set();
+      for (const p of players) {
+        if (p.name && !seenNames.has(p.name.toLowerCase())) {
+          seenNames.add(p.name.toLowerCase());
+          uniquePlayers.push(p);
+        }
+      }
+
       const bots = this.localPlayers.filter(p => p.isBot);
       
-      const humanPlayers = players.map(p => ({
+      const humanPlayers = uniquePlayers.map(p => ({
         name: p.name,
         isBot: false
       }));
 
       this.localPlayers = [...humanPlayers, ...bots];
       this._renderPlayerList();
+
+      // Check if there is currently an active host in the presence list
+      const hasHost = players.some(p => p.is_host);
+
+      if (hasHost) {
+        clearTimeout(this._hostElectionTimer);
+      }
+
+      // If the host has left/disconnected, elect a new host from remaining players after a 2.5s grace period (prevents dual-host race conditions on browser refreshes)
+      if (!hasHost && players.length > 0) {
+        clearTimeout(this._hostElectionTimer);
+        this._hostElectionTimer = setTimeout(() => {
+          if (!this.mp || !this.mp.channel) return;
+          
+          const freshPresences = Object.values(this.mp.channel.presenceState()).flat();
+          const hasHostNow = freshPresences.some(p => p.is_host);
+
+          if (!hasHostNow && freshPresences.length > 0) {
+            // Filter unique names
+            const unique = [];
+            const seen = new Set();
+            for (const p of freshPresences) {
+              if (p.name && !seen.has(p.name.toLowerCase())) {
+                seen.add(p.name.toLowerCase());
+                unique.push(p);
+              }
+            }
+
+            // Sort players by joined_at ascending to find the oldest remaining player
+            const sorted = [...unique].sort((a, b) => new Date(a.joined_at) - new Date(b.joined_at));
+            const newHost = sorted[0];
+
+            if (newHost && newHost.user_id === this.mp.myId) {
+              // We are elected as the new Host!
+              this.isHost = true;
+              this.mp.isHost = true;
+
+              // Update database active matchmaking lobby row
+              if (this.roomCode) {
+                this.db.updateActiveRoomHost(this.roomCode, this.myPlayerName).catch(console.error);
+                this.db.updateActiveRoomPlayerCount(this.roomCode, this.localPlayers.length).catch(console.error);
+              }
+
+              // Re-announce presence as Host so other clients detect us
+              this.mp.channel.track({
+                user_id: this.mp.myId,
+                name: this.myPlayerName,
+                is_host: true,
+                joined_at: newHost.joined_at // preserve our original join timestamp
+              }).catch(console.error);
+
+              // Update lobby controls view
+              this._showRoomLobby();
+              this._updateTurnUI();
+
+              this._showToast("👑 You are now the room owner!");
+              this._updateGameLog({
+                text: `👑 ${this.myPlayerName} is now the room owner!`,
+                type: 'system'
+              });
+
+              // Broadcast chat announcement
+              this.mp.sendChat(`📢 I am now the room owner!`);
+            }
+          }
+        }, 2500);
+      }
 
       // If host, debounce lobby broadcast and database rooms sync to avoid rapid-fire updates
       if (this.isHost) {
@@ -582,13 +689,10 @@ class App {
           text: `🚫 ${data.name} has left the match.`,
           type: 'warning'
         });
-        if (data.isHost) {
-          this._showToast("Host left. Returning to lobby...");
-          setTimeout(() => {
-            localStorage.removeItem('snl_active_session');
-            localStorage.removeItem('snl_local_game_state');
-            location.reload();
-          }, 3000);
+
+        // Handle in-game player disconnect/leave gracefully
+        if (this.game && this.game.gameStarted && !this.game.gameOver) {
+          this._handleInGamePlayerLeave(data.name);
         }
       } else if (data.type === 'kick_player') {
         if (data.name === this.myPlayerName) {
@@ -639,6 +743,16 @@ class App {
       if (player.name && player.name !== this.myPlayerName) {
         this._showToast(`🚪 ${player.name} left the room!`);
         this._triggerChatNotificationDot();
+
+        // Gracefully handle player connection drop or exit inside an active match
+        if (this.game && this.game.gameStarted && !this.game.gameOver) {
+          this._showToast(`🚫 ${player.name} has left the match.`);
+          this._updateGameLog({
+            text: `🚫 ${player.name} has left the match.`,
+            type: 'warning'
+          });
+          this._handleInGamePlayerLeave(player.name);
+        }
       }
     };
   }
@@ -963,6 +1077,17 @@ class App {
           text: `🏆 ${currentPlayer.name} reaches 100! Finished #${currentPlayer.rank}!`,
           type: 'win'
         });
+
+        // Show personalized splendid floating cartoon banner immediately
+        let endBannerText = `${currentPlayer.name} WINS! 🏆`;
+        let endBannerType = 'extra';
+        if (this.isOnlineMode) {
+          const isMe = currentPlayer.name === this.myPlayerName;
+          endBannerText = isMe ? "VICTORY! 🏆" : "DEFEAT! 💀";
+          endBannerType = isMe ? "extra" : "penalty";
+        }
+        this._showFloatingFeedback(endBannerText, endBannerType, currentPlayer.color.hex);
+
         this.sounds.playWinFanfare();
         await this.anims.celebrateWin(currentPlayer.color.hex);
       }
@@ -1107,6 +1232,17 @@ class App {
         text: `🏆 ${roller.name} reaches 100! Finished #${roller.rank}!`,
         type: 'win'
       });
+
+      // Show personalized splendid floating cartoon banner immediately
+      let endBannerText = `${roller.name} WINS! 🏆`;
+      let endBannerType = 'extra';
+      if (this.isOnlineMode) {
+        const isMe = roller.name === this.myPlayerName;
+        endBannerText = isMe ? "VICTORY! 🏆" : "DEFEAT! 💀";
+        endBannerType = isMe ? "extra" : "penalty";
+      }
+      this._showFloatingFeedback(endBannerText, endBannerType, roller.color.hex);
+
       this.sounds.playWinFanfare();
       await this.anims.celebrateWin(roller.color.hex);
     }
@@ -1184,6 +1320,20 @@ class App {
 
   _showResults(summary) {
     this.showScreen('results');
+
+    // Dynamic Victory/Defeat cartoon banner updates on results screen
+    const resultsTitle = document.querySelector('.results-title');
+    if (resultsTitle) {
+      if (this.isOnlineMode) {
+        const iWon = this.game.winners[0]?.name === this.myPlayerName;
+        resultsTitle.textContent = iWon ? "🏆 Victory!" : "💀 Defeat!";
+        resultsTitle.style.color = iWon ? "#4CAF50" : "#FF7043";
+      } else {
+        const winner = this.game.winners[0];
+        resultsTitle.textContent = `🏆 ${winner?.name || 'Player'} Wins!`;
+        if (winner?.color) resultsTitle.style.color = winner.color.hex;
+      }
+    }
 
     const rankings = document.getElementById('results-rankings');
     if (rankings) {
@@ -1286,10 +1436,19 @@ class App {
       if (this.dice && player.color) {
         const isYellow = player.color.hex.toLowerCase() === '#fdd835';
         const dotColor = isYellow ? '#1A237E' : '#FFFFFF';
+        
+        // Calculate a matching soft glowing shade for the border outline
+        let borderColor = 'rgba(255, 255, 255, 0.4)';
+        const hex = player.color.hex.toLowerCase();
+        if (hex === '#e53935') borderColor = '#ff8a80';      // Soft glow red
+        else if (hex === '#1e88e5') borderColor = '#80d8ff'; // Soft glow blue
+        else if (hex === '#43a047') borderColor = '#b9f6ca'; // Soft glow green
+        else if (hex === '#fdd835') borderColor = '#ffe57f'; // Soft glow yellow
+
         const container = document.getElementById('dice-container');
         if (container) {
           container.style.setProperty('--dice-bg', player.color.hex);
-          container.style.setProperty('--dice-border', '#1A237E');
+          container.style.setProperty('--dice-border', borderColor);
           container.style.setProperty('--dice-dot-color', dotColor);
         }
       }
@@ -1350,6 +1509,124 @@ class App {
         banner.remove();
       }, 350);
     }, 1200);
+  }
+
+  _handleInGamePlayerLeave(playerName) {
+    if (!this.game) return;
+    const player = this.game.players.find(p => p.name === playerName);
+    if (!player) return;
+
+    const totalPlayersBefore = this.game.players.length;
+
+    if (totalPlayersBefore <= 2) {
+      // 2 players: Match over! Remaining player wins by forfeit
+      const remainingPlayer = this.game.players.find(p => p.id !== player.id);
+      if (remainingPlayer) {
+        remainingPlayer.finished = true;
+        remainingPlayer.rank = 1;
+        this.game.winners = [remainingPlayer];
+        this.game.gameOver = true;
+        this.game.endTime = new Date();
+
+        this._updateGameLog({
+          text: `🏆 ${remainingPlayer.name} wins by forfeit as ${playerName} left!`,
+          type: 'win'
+        });
+
+        // Remove leaving player's pawn from DOM
+        const pawn = this.board.getPawnElement(player.id);
+        if (pawn) pawn.remove();
+        delete this.board.pawnElements[player.id];
+
+        // Re-index remaining pawn index
+        this.game.players.forEach((p, idx) => {
+          const pawnEl = this.board.getPawnElement(p.id);
+          if (pawnEl) pawnEl.dataset.playerIndex = idx;
+        });
+        this.board.updatePawnPositions(this.game.players);
+
+        this._updatePlayerCards();
+        this.saveActiveSession();
+
+        // Show personalized splendid floating cartoon banner immediately
+        let endBannerText = `${remainingPlayer.name} WINS! 🏆`;
+        let endBannerType = 'extra';
+        if (this.isOnlineMode) {
+          const isMe = remainingPlayer.name === this.myPlayerName;
+          endBannerText = isMe ? "VICTORY (FORFEIT)! 🏆" : "DEFEAT! 💀";
+          endBannerType = isMe ? "extra" : "penalty";
+        }
+        this._showFloatingFeedback(endBannerText, endBannerType, remainingPlayer.color.hex);
+
+        // Trigger win celebration
+        this.sounds.playWinFanfare();
+        this.anims.celebrateWin(remainingPlayer.color.hex);
+        setTimeout(() => this._handleGameOver(), 2000);
+      }
+    } else {
+      // 3 or 4 players: Remove player, adjust turn schedules, and continue match
+      const activePlayerBefore = this.game.getCurrentPlayer();
+      const leavingIndex = this.game.players.findIndex(p => p.id === player.id);
+
+      // Remove player
+      this.game.removePlayer(player.id);
+
+      // Update localPlayers list
+      this.localPlayers = this.game.players.map(p => ({
+        name: p.name,
+        isBot: p.isBot
+      }));
+
+      // Adjust currentPlayerIndex to keep it on the correct player
+      if (activePlayerBefore) {
+        if (activePlayerBefore.id === player.id) {
+          // If it was the leaving player's turn, advance to next player
+          let nextIndex = leavingIndex % this.game.players.length;
+          let safety = 0;
+          while (this.game.players[nextIndex].finished && safety < this.game.players.length) {
+            nextIndex = (nextIndex + 1) % this.game.players.length;
+            safety++;
+          }
+          this.game.currentPlayerIndex = nextIndex;
+        } else {
+          // Find the new index of the active player
+          const newIdx = this.game.players.findIndex(p => p.id === activePlayerBefore.id);
+          if (newIdx !== -1) {
+            this.game.currentPlayerIndex = newIdx;
+          }
+        }
+      }
+
+      // Re-index all pawns, update styles and initials text to match new color assignments
+      this.game.players.forEach((p, idx) => {
+        const pawnEl = this.board.getPawnElement(p.id);
+        if (pawnEl) {
+          pawnEl.dataset.playerIndex = idx;
+          pawnEl.style.setProperty('--pawn-color', p.color.hex);
+          pawnEl.style.setProperty('--pawn-light', p.color.light);
+          pawnEl.textContent = p.name.charAt(0).toUpperCase();
+        }
+      });
+
+      // Update positions and UI views
+      this.board.updatePawnPositions(this.game.players);
+      this._updatePlayerCards();
+      this._updateTurnUI();
+      this.saveActiveSession();
+
+      // If host, broadcast the updated state so clients sync up instantly
+      if (this.isOnlineMode && this.isHost && this.mp) {
+        this.mp.broadcastGameState(this.game.getState());
+      }
+
+      // Trigger bot turn if active turn is a bot
+      const nextPlayer = this.game.getCurrentPlayer();
+      if (nextPlayer && nextPlayer.isBot) {
+        if (!this.isOnlineMode || this.isHost) {
+          this.bot.takeTurn(nextPlayer, () => this._onRollDice(), this.isOnlineMode);
+        }
+      }
+    }
   }
 
   _updateGameLog(entry, isHistory = false) {
@@ -1589,12 +1866,25 @@ class App {
       
       if (this.isOnlineMode && this.mp) {
         try {
-          if (this.isHost) {
+          const presenceList = this.mp.getPresenceList();
+          const remainingCount = presenceList.filter(p => p.user_id !== this.mp.myId).length;
+
+          if (remainingCount === 0) {
+            // Room is empty: remove it completely!
             await this.db.deleteActiveRoom(this.roomCode);
+          } else if (this.isHost) {
+            // Host is leaving but players remain: handover database row to the next owner
+            const sorted = [...presenceList]
+              .filter(p => p.user_id !== this.mp.myId)
+              .sort((a, b) => new Date(a.joined_at) - new Date(b.joined_at));
+            const newHost = sorted[0];
+            if (newHost) {
+              await this.db.updateActiveRoomHost(this.roomCode, newHost.name).catch(console.error);
+              await this.db.updateActiveRoomPlayerCount(this.roomCode, remainingCount).catch(console.error);
+            }
           } else {
-            // Count remaining players
-            const count = this.localPlayers.filter(p => !p.isBot && p.name !== this.myPlayerName).length;
-            await this.db.updateActiveRoomPlayerCount(this.roomCode, count);
+            // Normal player leaves: update room player count
+            await this.db.updateActiveRoomPlayerCount(this.roomCode, remainingCount).catch(console.error);
           }
 
           this.mp.sendChat(`👋 ${this.myPlayerName} has left the match.`);
@@ -1617,6 +1907,7 @@ class App {
       if (this.isOnlineMode) {
         this.roomCode = null;
         this.localPlayers = [];
+        this.onlinePlayersCache = [];
         
         // Reset room-lobby and online-setup visibility
         document.getElementById('room-lobby')?.classList.add('hidden');

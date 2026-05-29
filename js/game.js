@@ -242,7 +242,8 @@ export class GameEngine {
       turnCount: this.turnCount,
       lastRoll: this.lastRoll,
       snakes: this.snakes,
-      ladders: this.ladders
+      ladders: this.ladders,
+      startTime: this.startTime ? this.startTime.toISOString() : null
     };
   }
 
@@ -291,6 +292,7 @@ export class GameEngine {
       this.lastRoll = state.lastRoll;
       if (state.snakes) this.snakes = state.snakes;
       if (state.ladders) this.ladders = state.ladders;
+      if (state.startTime) this.startTime = new Date(state.startTime);
     }
 
     // Rebuild winners array from players who have finished, sorted by rank

@@ -159,6 +159,16 @@ export class BoardRenderer {
 
   /** Update all pawn positions to match game state */
   updatePawnPositions(players) {
+    // Clean up any pawns for players who are no longer in the game
+    const activeIds = players.map(p => p.id);
+    Object.keys(this.pawnElements).forEach(id => {
+      if (!activeIds.includes(id)) {
+        const pawn = this.pawnElements[id];
+        if (pawn) pawn.remove();
+        delete this.pawnElements[id];
+      }
+    });
+
     players.forEach(player => {
       const pawn = this.pawnElements[player.id];
       if (!pawn) return;
@@ -335,6 +345,9 @@ export class BoardRenderer {
     const dx = top.x - bottom.x;
     const dy = top.y - bottom.y;
     const length = Math.sqrt(dx * dx + dy * dy);
+    
+    if (!length || isNaN(length)) return; // Prevent division by zero and NaN SVG attributes
+
     const nx = -dy / length * width; // perpendicular normal
     const ny = dx / length * width;
 

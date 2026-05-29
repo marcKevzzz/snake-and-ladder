@@ -339,6 +339,29 @@ export class Database {
     }
   }
 
+  async updateActiveRoomHost(roomCode, newHostName) {
+    if (this.isOnline) {
+      try {
+        await this.supabase
+          .from('active_rooms')
+          .update({ host_name: newHostName, updated_at: new Date().toISOString() })
+          .eq('room_code', roomCode);
+      } catch (e) {
+        console.warn('DB updateActiveRoomHost error:', e);
+      }
+      return;
+    }
+
+    // Local fallback
+    const rooms = this._getLocalData('active_rooms');
+    const room = rooms.find(r => r.room_code === roomCode);
+    if (room) {
+      room.host_name = newHostName;
+      room.updated_at = new Date().toISOString();
+      this._setLocalData('active_rooms', rooms);
+    }
+  }
+
   async deleteActiveRoom(roomCode) {
     if (this.isOnline) {
       try {
