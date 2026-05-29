@@ -257,6 +257,130 @@ export class Database {
   }
 
   // ============================================================
+  // Active Rooms Matchmaking operations
+  // ============================================================
+
+  async createActiveRoom(roomCode, hostName) {
+    const room = {
+      room_code: roomCode,
+      host_name: hostName,
+      player_count: 1,
+      max_players: 4,
+      is_private: false,
+      updated_at: new Date().toISOString()
+    };
+
+    if (this.isOnline) {
+      try {
+        const { data, error } = await this.supabase
+          .from('active_rooms')
+          .insert(room)
+          .select()
+          .single();
+        if (error) throw error;
+        return data;
+      } catch (e) {
+        console.warn('DB createActiveRoom error:', e);
+      }
+    }
+
+    // Local fallback
+    const rooms = this._getLocalData('active_rooms');
+    // Remove duplicates
+    const filtered = rooms.filter(r => r.room_code !== roomCode);
+    filtered.push(room);
+    this._setLocalData('active_rooms', filtered);
+    return room;
+  }
+
+  async updateActiveRoomPlayerCount(roomCode, count) {
+    if (this.isOnline) {
+      try {
+        await this.supabase
+          .from('active_rooms')
+          .update({ player_count: count, updated_at: new Date().toISOString() })
+          .eq('room_code', roomCode);
+      } catch (e) {
+        console.warn('DB updateActiveRoomPlayerCount error:', e);
+      }
+      return;
+    }
+
+    // Local fallback
+    const rooms = this._getLocalData('active_rooms');
+    const room = rooms.find(r => r.room_code === roomCode);
+    if (room) {
+      room.player_count = count;
+      room.updated_at = new Date().toISOString();
+      this._setLocalData('active_rooms', rooms);
+    }
+  }
+
+  async updateActiveRoomPrivacy(roomCode, isPrivate) {
+    if (this.isOnline) {
+      try {
+        await this.supabase
+          .from('active_rooms')
+          .update({ is_private: isPrivate, updated_at: new Date().toISOString() })
+          .eq('room_code', roomCode);
+      } catch (e) {
+        console.warn('DB updateActiveRoomPrivacy error:', e);
+      }
+      return;
+    }
+
+    // Local fallback
+    const rooms = this._getLocalData('active_rooms');
+    const room = rooms.find(r => r.room_code === roomCode);
+    if (room) {
+      room.is_private = isPrivate;
+      room.updated_at = new Date().toISOString();
+      this._setLocalData('active_rooms', rooms);
+    }
+  }
+
+  async deleteActiveRoom(roomCode) {
+    if (this.isOnline) {
+      try {
+        await this.supabase
+          .from('active_rooms')
+          .delete()
+          .eq('room_code', roomCode);
+      } catch (e) {
+        console.warn('DB deleteActiveRoom error:', e);
+      }
+      return;
+    }
+
+    // Local fallback
+    const rooms = this._getLocalData('active_rooms');
+    const filtered = rooms.filter(r => r.room_code !== roomCode);
+    this._setLocalData('active_rooms', filtered);
+  }
+
+  async getActiveRooms() {
+    if (this.isOnline) {
+      try {
+        const { data, error } = await this.supabase
+          .from('active_rooms')
+          .select('*')
+          .eq('is_private', false)
+          .order('created_at', { ascending: false });
+        if (error) throw error;
+        return data || [];
+      } catch (e) {
+        console.warn('DB getActiveRooms error:', e);
+      }
+    }
+
+    // Local fallback
+    const rooms = this._getLocalData('active_rooms');
+    // Filter rooms updated in the last 1 hour to keep it fresh
+    const oneHourAgo = Date.now() - 3600000;
+    return rooms.filter(r => !r.is_private && new Date(r.updated_at).getTime() > oneHourAgo).reverse();
+  }
+
+  // ============================================================
   // Helpers
   // ============================================================
 

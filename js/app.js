@@ -113,11 +113,19 @@ class App {
       }
 
       const isChatHidden = chat?.classList.contains('chat-hidden');
-      if (chatToggle) chatToggle.style.display = isChatHidden ? 'flex' : 'none';
+      if (chatToggle) {
+        chatToggle.style.display = isChatHidden ? 'flex' : 'none';
+        if (!isChatHidden) {
+          chatToggle.classList.remove('has-notification');
+        }
+      }
     } else {
       chat?.classList.add('hidden');
       chat?.classList.remove('chat-hidden');
-      if (chatToggle) chatToggle.style.display = 'none';
+      if (chatToggle) {
+        chatToggle.style.display = 'none';
+        chatToggle.classList.remove('has-notification');
+      }
     }
 
     // Initialize screen-specific content
@@ -146,6 +154,13 @@ class App {
     document.getElementById('btn-add-bot-online')?.addEventListener('click', () => this._addBot());
     document.getElementById('btn-start-online')?.addEventListener('click', () => this._startOnlineGame());
     document.getElementById('btn-leave-lobby-online')?.addEventListener('click', () => this.confirmLeaveMatch());
+
+    // Public rooms matchmaking lobby refreshes
+    document.getElementById('btn-refresh-rooms')?.addEventListener('click', () => this._loadActiveRooms(true));
+
+    // Room visibility controls (for host)
+    document.getElementById('btn-visibility-public')?.addEventListener('click', () => this._updatePrivacySetting(false));
+    document.getElementById('btn-visibility-private')?.addEventListener('click', () => this._updatePrivacySetting(true));
 
     // Enter key on inputs
     document.getElementById('player-name-input')?.addEventListener('keydown', (e) => {
@@ -183,6 +198,13 @@ class App {
     document.getElementById('local-mode')?.classList.toggle('hidden', mode !== 'local');
     document.getElementById('online-mode')?.classList.toggle('hidden', mode !== 'online');
     this._renderPlayerList();
+
+    if (this.isOnlineMode) {
+      this._loadActiveRooms();
+      this._startActiveRoomsRefreshTimer();
+    } else {
+      this._stopActiveRoomsRefreshTimer();
+    }
   }
 
   _addLocalPlayer() {
@@ -291,6 +313,7 @@ class App {
 
     try {
       this.roomCode = await this.mp.createRoom(name);
+      await this.db.createActiveRoom(this.roomCode, name);
       this._showRoomLobby();
       this._renderPlayerList();
       this.saveActiveSession();
@@ -357,6 +380,142 @@ class App {
     // Show/hide host-only controls
     document.getElementById('btn-add-bot-online')?.classList.toggle('hidden', !this.isHost);
     document.getElementById('btn-start-online')?.classList.toggle('hidden', !this.isHost);
+    document.getElementById('room-visibility-control')?.classList.toggle('hidden', !this.isHost);
+
+    // Stop active rooms matchmaking refresh loop since we are in a room lobby now
+    this._stopActiveRoomsRefreshTimer();
+
+    // Default privacy visual to Public
+    this._updatePrivacyUI(false);
+  }
+
+  _startActiveRoomsRefreshTimer() {
+    this._stopActiveRoomsRefreshTimer();
+    this._activeRoomsTimer = setInterval(() => {
+      // Only refresh if we are on the lobby screen and online setup is active
+      const onlineSetup = document.getElementById('online-setup');
+      if (this.currentScreen === 'lobby' && onlineSetup && !onlineSetup.classList.contains('hidden')) {
+        this._loadActiveRooms();
+      }
+    }, 5000);
+  }
+
+  _stopActiveRoomsRefreshTimer() {
+    if (this._activeRoomsTimer) {
+      clearInterval(this._activeRoomsTimer);
+      this._activeRoomsTimer = null;
+    }
+  }
+
+  async _loadActiveRooms(manual = false) {
+    const container = document.getElementById('rooms-list-container');
+    const refreshBtn = document.getElementById('btn-refresh-rooms');
+    if (!container) return;
+
+    if (manual && refreshBtn) {
+      refreshBtn.classList.add('spinning');
+      this.sounds.playClick();
+      setTimeout(() => refreshBtn.classList.remove('spinning'), 800);
+    }
+
+    try {
+      const rooms = await this.db.getActiveRooms();
+      container.innerHTML = '';
+
+      if (!rooms || rooms.length === 0) {
+        container.innerHTML = `<div class="empty-list" style="padding: 16px; font-size: 0.85rem;">No active public rooms. Create one to start!</div>`;
+        return;
+      }
+
+      rooms.forEach(room => {
+        const item = document.createElement('div');
+        item.className = 'lobby-room-item';
+        item.innerHTML = `
+          <div class="lobby-room-host">
+            <span>👋</span>
+            <span style="font-weight: 800;">${room.host_name}'s room</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span class="lobby-room-code-badge">${room.room_code}</span>
+            <span class="lobby-room-census">${room.player_count}/${room.max_players}</span>
+            <button class="btn btn-secondary btn-join-quick" data-code="${room.room_code}" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 8px;">Join</button>
+          </div>
+        `;
+
+        // Bind quick join button
+        item.querySelector('.btn-join-quick')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const nameInput = document.getElementById('online-name-input');
+          const codeInput = document.getElementById('join-code-input');
+          if (nameInput && !nameInput.value.trim()) {
+            this._shake(nameInput);
+            this._showToast('Please enter your name first!');
+            return;
+          }
+          if (codeInput) {
+            codeInput.value = room.room_code;
+            this._joinRoom();
+          }
+        });
+
+        container.appendChild(item);
+      });
+    } catch (e) {
+      console.warn('Failed to load active rooms:', e);
+    }
+  }
+
+  async _updatePrivacySetting(isPrivate) {
+    if (!this.isHost || !this.roomCode) return;
+    this.sounds.playClick();
+
+    try {
+      // 1. Update in active_rooms database
+      await this.db.updateActiveRoomPrivacy(this.roomCode, isPrivate);
+
+      // 2. Broadcast to all clients in the channel
+      if (this.mp) {
+        this.mp.broadcastGameState({
+          type: 'privacy_update',
+          isPrivate: isPrivate
+        });
+      }
+
+      // 3. Update local UI
+      this._updatePrivacyUI(isPrivate);
+      this._showToast(`Room is now ${isPrivate ? '🔒 Private' : '🔓 Public'}`);
+    } catch (e) {
+      console.error('Error updating room privacy:', e);
+    }
+  }
+
+  _updatePrivacyUI(isPrivate) {
+    const pubBtn = document.getElementById('btn-visibility-public');
+    const privBtn = document.getElementById('btn-visibility-private');
+    const badge = document.getElementById('room-privacy-badge');
+
+    if (pubBtn && privBtn) {
+      pubBtn.classList.toggle('active', !isPrivate);
+      privBtn.classList.toggle('active', isPrivate);
+    }
+
+    if (badge) {
+      badge.textContent = isPrivate ? '🔒 Private' : '🔓 Public';
+      badge.className = `room-privacy-badge ${isPrivate ? 'private' : 'public'}`;
+    }
+  }
+
+  _triggerChatNotificationDot() {
+    const chatWrapper = document.getElementById('online-chat-wrapper');
+    const toggleBtn = document.getElementById('btn-chat-toggle');
+    
+    // Check if chat is closed/collapsed
+    const isChatHidden = !chatWrapper || chatWrapper.classList.contains('chat-hidden') || chatWrapper.classList.contains('hidden');
+    
+    if (isChatHidden && toggleBtn) {
+      toggleBtn.classList.add('has-notification');
+      this.sounds.playPawnHop(); // Subtle sound alert
+    }
   }
 
   _setupMultiplayerCallbacks() {
@@ -375,14 +534,20 @@ class App {
       this.localPlayers = [...humanPlayers, ...bots];
       this._renderPlayerList();
 
-      // If host, debounce lobby broadcast to avoid rapid-fire updates
+      // If host, debounce lobby broadcast and database rooms sync to avoid rapid-fire updates
       if (this.isHost) {
         clearTimeout(this._lobbySyncTimer);
-        this._lobbySyncTimer = setTimeout(() => {
+        this._lobbySyncTimer = setTimeout(async () => {
           this.mp.broadcastGameState({
             type: 'lobby_update',
             players: this.localPlayers
           });
+
+          // Also update active matchmaking lobby player counts
+          if (this.roomCode) {
+            const count = this.localPlayers.length;
+            await this.db.updateActiveRoomPlayerCount(this.roomCode, count);
+          }
         }, 150);
       }
     };
@@ -439,6 +604,8 @@ class App {
             location.reload();
           }, 2500);
         }
+      } else if (!this.isHost && data.type === 'privacy_update') {
+        this._updatePrivacyUI(data.isPrivate);
       } else if (!this.isHost && data.type !== 'dice_roll') {
         // Full state update
         if (this.game) {
@@ -458,11 +625,29 @@ class App {
     this.mp.onChatMessage = (data) => {
       // self: false means we only get messages from others
       this._addChatMessage(data.from, data.message, false);
+      this._triggerChatNotificationDot();
+    };
+
+    this.mp.onPlayerJoin = (player) => {
+      if (player.name && player.name !== this.myPlayerName) {
+        this._showToast(`👋 ${player.name} joined the room!`);
+        this._triggerChatNotificationDot();
+      }
+    };
+
+    this.mp.onPlayerLeave = (player) => {
+      if (player.name && player.name !== this.myPlayerName) {
+        this._showToast(`🚪 ${player.name} left the room!`);
+        this._triggerChatNotificationDot();
+      }
     };
   }
 
   async _startOnlineGame() {
     if (!this.isHost) return;
+    if (this.roomCode) {
+      await this.db.deleteActiveRoom(this.roomCode);
+    }
     this._startLocalGame(); // Same logic — host runs the game
     if (this.mp) {
       this.mp.broadcastGameStart(this.game.getState());
@@ -1088,6 +1273,18 @@ class App {
         indicator.style.borderLeft = `6px solid ${player.color.hex}`;
         indicator.style.background = `linear-gradient(135deg, ${player.color.light} 0%, rgba(255, 255, 255, 0.95) 100%)`;
       }
+
+      // Update 3D dice color theme dynamically to match the active player's color
+      if (this.dice && player.color) {
+        const isYellow = player.color.hex.toLowerCase() === '#fdd835';
+        const dotColor = isYellow ? '#1A237E' : '#FFFFFF';
+        const container = document.getElementById('dice-container');
+        if (container) {
+          container.style.setProperty('--dice-bg', player.color.hex);
+          container.style.setProperty('--dice-border', '#1A237E');
+          container.style.setProperty('--dice-dot-color', dotColor);
+        }
+      }
     }
 
     if (rollBtn) {
@@ -1106,6 +1303,28 @@ class App {
     const item = document.createElement('div');
     item.className = `log-entry log-${entry.type || 'info'}`;
     item.textContent = entry.text;
+
+    // Apply exact player color styles dynamically
+    if (this.game && this.game.players) {
+      let parsedHtml = entry.text;
+      let matchedPlayer = null;
+
+      for (const p of this.game.players) {
+        if (!p.name) continue;
+        const escapedName = p.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const regex = new RegExp(`\\b${escapedName}\\b`, 'g');
+        if (regex.test(entry.text)) {
+          matchedPlayer = p;
+          parsedHtml = parsedHtml.replace(regex, `<span class="log-player-name" style="color: ${p.color.hex}; font-weight: 800;">${p.name}</span>`);
+        }
+      }
+
+      if (matchedPlayer) {
+        item.innerHTML = parsedHtml;
+        item.style.borderLeft = `4px solid ${matchedPlayer.color.hex}`;
+        item.style.background = `linear-gradient(90deg, ${matchedPlayer.color.light}33 0%, rgba(255, 255, 255, 0.4) 100%)`;
+      }
+    }
 
     log.insertBefore(item, log.firstChild);
 
@@ -1313,6 +1532,14 @@ class App {
       
       if (this.isOnlineMode && this.mp) {
         try {
+          if (this.isHost) {
+            await this.db.deleteActiveRoom(this.roomCode);
+          } else {
+            // Count remaining players
+            const count = this.localPlayers.filter(p => !p.isBot && p.name !== this.myPlayerName).length;
+            await this.db.updateActiveRoomPlayerCount(this.roomCode, count);
+          }
+
           this.mp.sendChat(`👋 ${this.myPlayerName} has left the match.`);
           this.mp.broadcastGameState({
             type: 'player_left',
@@ -1367,7 +1594,10 @@ class App {
     // Show chat panel from floating bubble
     toggleBtn?.addEventListener('click', () => {
       chatWrapper?.classList.remove('chat-hidden');
-      if (toggleBtn) toggleBtn.style.display = 'none';
+      if (toggleBtn) {
+        toggleBtn.style.display = 'none';
+        toggleBtn.classList.remove('has-notification');
+      }
       this.sounds.playClick();
     });
 

@@ -112,3 +112,25 @@ SELECT
 FROM players
 ORDER BY wins DESC, win_rate DESC, games_played DESC
 LIMIT 100;
+
+-- ============================================================
+-- Active Rooms for Matchmaking Lobby
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS active_rooms (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    room_code TEXT UNIQUE NOT NULL,
+    host_name TEXT NOT NULL,
+    player_count INTEGER DEFAULT 1,
+    max_players INTEGER DEFAULT 4,
+    is_private BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE active_rooms ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow public read on active_rooms" ON active_rooms FOR SELECT USING (true);
+CREATE POLICY "Allow public insert on active_rooms" ON active_rooms FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update on active_rooms" ON active_rooms FOR UPDATE USING (true);
+CREATE POLICY "Allow public delete on active_rooms" ON active_rooms FOR DELETE USING (true);
+

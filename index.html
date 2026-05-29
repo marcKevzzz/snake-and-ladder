@@ -91,17 +91,40 @@
                 <button class="btn btn-secondary" id="btn-join-room">Join →</button>
               </div>
             </div>
+
+            <!-- Active Rooms Lobby List -->
+            <div class="active-rooms-lobby" id="active-rooms-lobby" style="margin-top: 24px; border-top: 2px dashed rgba(0, 0, 0, 0.08); padding-top: 20px;">
+              <div class="lobby-section-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                <span class="lobby-section-title" style="font-family: var(--font-display); font-size: 1.15rem; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">🌐 Public Lobby Rooms</span>
+                <button class="btn-refresh-rooms" id="btn-refresh-rooms" title="Refresh lobby list" style="background: none; border: none; font-size: 1.1rem; cursor: pointer; transition: transform 0.3s ease; padding: 4px;">🔄</button>
+              </div>
+              <div class="rooms-list-container" id="rooms-list-container" style="display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; padding-right: 4px;">
+                <div class="empty-list" style="padding: 16px; font-size: 0.85rem;">No active public rooms. Create one to start!</div>
+              </div>
+            </div>
           </div>
 
           <!-- Room Lobby (shown after creating/joining) -->
           <div id="room-lobby" class="hidden">
-            <div class="room-header">
-              <span class="room-label">Room Code:</span>
-              <span class="room-code" id="room-code-display"></span>
-              <button class="btn-copy" onclick="navigator.clipboard.writeText(document.getElementById('room-code-display').textContent)" title="Copy code">📋</button>
+            <div class="room-header" style="position: relative; display: flex; align-items: center; justify-content: space-between;">
+              <div style="display: flex; align-items: center; gap: var(--space-sm);">
+                <span class="room-label">Room Code:</span>
+                <span class="room-code" id="room-code-display"></span>
+                <button class="btn-copy" onclick="navigator.clipboard.writeText(document.getElementById('room-code-display').textContent)" title="Copy code">📋</button>
+              </div>
+              <span id="room-privacy-badge" class="room-privacy-badge public" style="padding: 4px 8px; border-radius: 8px; font-size: 0.75rem; font-weight: 700; color: #2E7D32; background: rgba(76, 175, 80, 0.15); border: 1px solid rgba(76, 175, 80, 0.25);">🔓 Public</span>
             </div>
 
-            <div class="player-list" id="player-list-online">
+            <!-- Room visibility setting (only visible to host) -->
+            <div class="room-visibility-control hidden" id="room-visibility-control" style="margin: 12px 0; text-align: center;">
+              <span class="visibility-label" style="font-weight: 700; color: var(--text-secondary); margin-right: var(--space-sm); font-size: 0.9rem;">Room Type:</span>
+              <div class="visibility-toggle-group" style="display: inline-flex; background: rgba(0,0,0,0.05); padding: 4px; border-radius: 10px;">
+                <button class="visibility-btn active" id="btn-visibility-public" style="background: white; border: none; padding: 6px 12px; border-radius: 8px; font-weight: 700; cursor: pointer; color: var(--accent-primary); font-size: 0.85rem; transition: all 0.2s ease;">🔓 Public</button>
+                <button class="visibility-btn" id="btn-visibility-private" style="background: transparent; border: none; padding: 6px 12px; border-radius: 8px; font-weight: 700; cursor: pointer; color: var(--text-secondary); font-size: 0.85rem; transition: all 0.2s ease;">🔒 Private</button>
+              </div>
+            </div>
+
+            <div class="player-list" id="player-list-online" style="margin-top: 12px;">
               <div class="empty-list">Waiting for players...</div>
             </div>
 

@@ -64,9 +64,11 @@ export class DiceRenderer {
       if (this.isRolling) { resolve(); return; }
       this.isRolling = true;
 
-      // Add rolling animation class
-      this.cube.classList.add('rolling');
       this.cube.dataset.face = '';
+
+      this.currentX = this.currentX || 0;
+      this.currentY = this.currentY || 0;
+      this.currentZ = this.currentZ || 0;
 
       // Determine final rotation for the target face
       const rotations = {
@@ -78,40 +80,43 @@ export class DiceRenderer {
         6: { x: 0, y: 180 }
       };
 
-      // Add extra spins (reduced for speed)
-      const spinsX = (Math.floor(Math.random() * 2) + 1) * 360;
-      const spinsY = (Math.floor(Math.random() * 2) + 1) * 360;
-      const rot = rotations[value];
-      const finalX = spinsX + rot.x;
-      const finalY = spinsY + rot.y;
+      const targetRot = rotations[value];
+      const minSpins = 720; // At least 2 full spins for realistic roll duration
 
-      const spinDuration = 800; // Let it spin/tumble for 800ms
+      let nextX = this.currentX + minSpins;
+      nextX = Math.ceil(nextX / 360) * 360 + targetRot.x;
 
-      // Apply the landing roll after the rolling spin duration
-      setTimeout(() => {
-        this.cube.classList.remove('rolling');
-        this.cube.style.transition = `transform ${ANIM.DICE_ROLL}ms cubic-bezier(0.25, 0.8, 0.25, 1)`;
-        this.cube.style.transform = `rotateX(${finalX}deg) rotateY(${finalY}deg)`;
-      }, spinDuration);
- 
-      // Resolve after entire roll animation finishes
+      let nextY = this.currentY + minSpins;
+      nextY = Math.ceil(nextY / 360) * 360 + targetRot.y;
+
+      const spinsZ = (Math.floor(Math.random() * 2) + 2) * 360;
+      let nextZ = this.currentZ + spinsZ;
+
+      this.currentX = nextX;
+      this.currentY = nextY;
+      this.currentZ = nextZ;
+
+      // Apply transition and transform dynamically for perfect smooth rotation flow
+      this.cube.style.transition = `transform ${ANIM.DICE_ROLL}ms cubic-bezier(0.2, 0.8, 0.2, 1.15)`;
+      this.cube.style.transform = `rotateX(${this.currentX}deg) rotateY(${this.currentY}deg) rotateZ(${this.currentZ}deg)`;
+
+      // Resolve after animation completes
       setTimeout(() => {
         this.cube.dataset.face = value;
         this.isRolling = false;
-        // Cleanup transition for next roll
-        setTimeout(() => {
-          this.cube.style.transition = 'none';
-        }, 50);
         resolve();
-      }, spinDuration + ANIM.DICE_ROLL + 80);
+      }, ANIM.DICE_ROLL + 80);
     });
   }
 
   /** Reset dice to neutral position */
   reset() {
     this.cube.style.transition = 'none';
-    this.cube.style.transform = 'rotateX(0deg) rotateY(0deg)';
+    this.cube.style.transform = 'rotateX(0deg) rotateY(0deg) rotateZ(0deg)';
     this.cube.dataset.face = '1';
+    this.currentX = 0;
+    this.currentY = 0;
+    this.currentZ = 0;
     this.isRolling = false;
   }
 
